@@ -61,8 +61,10 @@ class TestAllSeq(uvm_sequence):
         seqr = ConfigDB().get(None, "", "SEQR")
         random = RandomSeq("random")
         max = MaxSeq("max")
+        prime = PrimeSeq("prime")
         await random.start(seqr)
         await max.start(seqr)
+        await prime.start(seqr)
 
 
 class TestAllForkSeq(uvm_sequence):
@@ -71,9 +73,11 @@ class TestAllForkSeq(uvm_sequence):
         seqr = ConfigDB().get(None, "", "SEQR")
         random = RandomSeq("random")
         max = MaxSeq("max")
+        prime = PrimeSeq("prime")
         random_task = cocotb.start_soon(random.start(seqr))
         max_task = cocotb.start_soon(max.start(seqr))
-        await Combine(random_task, max_task)
+        prime_task = cocotb.start_soon(prime.start(seqr))
+        await Combine(random_task, max_task, prime_task)
 
 # Sequence library example
 
@@ -133,6 +137,24 @@ class FibonacciSeq(uvm_sequence):
             cur_num = sum
         uvm_root().logger.info("Fibonacci Sequence: " + str(fib_list))
         uvm_root().set_logging_level_hier(CRITICAL)
+
+
+class PrimeSeq(uvm_sequence):
+    def __init__(self, name):
+        super().__init__(name)
+        self.seqr = ConfigDB().get(None, "", "SEQR")
+
+    async def body(self):
+        prime_list = [num for num in range(2,256) if all(num % dist for dist in range(2, int(num**0.5) + 1))]
+        # Ensure the list is even to iterate through the list with 2 elements at a time
+        if len(prime_list) % 2 == 0:
+            prime_list.append(random.choice(prime_list))
+        # random.shuffle(prime_list) //shuffle the list if needed
+        
+        for num1, num2 in zip(prime_list[::2], prime_list[1::2]):
+            opc = random.choice(list(Ops))
+            seq = OpSeq("seq", num1, num2, opc)
+            await seq.start(self.seqr)
 
 
 class Driver(uvm_driver):
@@ -297,3 +319,12 @@ class AluTestErrors(AluTest):
 
     def start_of_simulation_phase(self):
         ConfigDB().set(None, "*", "CREATE_ERRORS", True)
+
+
+@pyuvm.test()
+class PrimeSeqTest(AluTest):
+    """Run Prime Sequence"""
+
+    def build_phase(self):
+        uvm_factory().set_type_override_by_type(TestAllSeq, PrimeSeq)
+        return super().build_phase()
